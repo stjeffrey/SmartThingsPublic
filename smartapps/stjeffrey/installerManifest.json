@@ -1,0 +1,49 @@
+{
+    "namespace": "stjeffrey",
+    "repoOwner": "stjeffrey",
+    "repoName": "MyQ",
+    "repoBranch": "master",
+    "name": "MyQ",
+    "author": "Stephane Jeffrey",
+    "description": "MyQ for SmartThings",
+    "category": "My Apps",
+    "bannerUrl": "https://raw.githubusercontent.com/stjeffrey/SmartThingsPublic/master/icons/MyQBanner.png",
+    "forumUrl": "",
+    "docUrl": "https://github.com/stjeffrey/SmartThingsPublic/blob/master/README.md",
+    "releaseType": "production",
+    "keywords": ["myq", "garage", "garage door", "chamberlain"],
+    "notes": "",
+    "smartApps": {
+        "parent": {
+            "name": "MyQ",
+            "iconUrl": "https://raw.githubusercontent.com/stjeffrey/SmartThingsPublic/master/icons/myq.png",
+            "published": true,
+            "oAuth": true,
+            "version": "1.0.0",
+            "appSettings": {},
+            "appUrl": "smartapps/stjeffrey/myq.src/myq.groovy"
+        },
+        "children": []
+    },
+    "deviceHandlers": [{
+            "name": "MyQ Garage Door Opener",
+            "iconUrl": "https://raw.githubusercontent.com/stjeffrey/SmartThingsPublic/master/icons/myq.png",
+            "published": true,
+            "oAuth": false,
+            "appUrl": "devicetypes/stjeffrey/myq-garage-door-opener.src/myq-garage-door-opener.groovy",
+            "appSettings": {},
+            "version": "1.0.0",
+            "optional": false
+        },
+	    {
+	        "name": "Momentary Button Tile",
+	        "iconUrl": "https://raw.githubusercontent.com/stjeffrey/SmartThingsPublic/master/icons/myq.png",
+	        "published": true,
+	        "oAuth": false,
+	        "appUrl": "devicetypes/smartthings/momentary-button-tile.src/momentary-button-tile.groovy",
+	        "appSettings": {},
+	        "version": "1.0.1",
+	        "optional": true
+	    }
+        ]
+}
