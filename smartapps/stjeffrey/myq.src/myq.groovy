@@ -1,4 +1,17 @@
-prefrences {
+include 'asynchttp_v1'
+
+definition(
+	name: "MyQ",
+	namespace: "stjeffrey",
+	author: "Stephane Jeffrey",
+	description: "MyQ Integration with Smartthings",
+	category: "My Apps",
+	iconUrl:   "https://raw.githubusercontent.com/stjeffrey/SmartThingsPublic/master/icons/myq.png",
+	iconX2Url: "https://raw.githubusercontent.com/stjeffrey/SmartThingsPublic/master/icons/myq@2x.png",
+	iconX3Url: "https://raw.githubusercontent.com/stjeffrey/SmartThingsPublic/master/icons/myq@3x.png"
+)
+
+preferences {
     page(name: "prefLogIn", title: "MyQ")
 	page(name: "prefListDevices", title: "MyQ")
 /*    page(name: "prefSensor1", title: "MyQ")
@@ -14,27 +27,6 @@ prefrences {
     page(name: "prefUninstall", title: "MyQ")
 }
 
-
-BRAND_MAPPINGS = {
-    'liftmaster': {
-        'app_id':
-        # 'Vj8pQggXLhLy0WHahglCD4N1nAkkXQtGYpq2HrHD7H1nvmbT55KqtN6RSF4ILB/i'
-            'NWknvuBd7LoFHfXmKNMBcgajXtZEgKUh4V7WNzMidrpUUluDpVYVZx+xT4PCM5Kx'
-    },
-    'chamberlain': {
-        'app_id':
-            'OA9I/hgmPHFp9RYKJqCKfwnhh28uqLJzZ9KOJf1DXoo8N2XAaVX6A1wcLYyWsnnv'
-    },
-    'craftsman': {
-        'app_id':
-        # 'YmiMRRS1juXdSd0KWsuKtHmQvh5RftEp5iewHdCvsNB77FnQbY+vjCVn2nMdIeN8'
-            'eU97d99kMG4t3STJZO/Mu2wt69yTQwM0WXZA5oZ74/ascQ2xQrLD/yjeVhEQccBZ'
-    },
-    'merlin': {
-        'app_id':
-            '3004cac4e920426c823fa6c2ecf0cc28ef7d4a7b74b6470f8f0d94d6c39eb718'
-    }
-}
 /* Preferences */
 def preferences_Login() {
     return dynamicPage(name: "prefLogIn", title: "Connect to MyQ", nextPage:"prefListDevices", uninstall:false, install: false, submitOnChange: true) {
@@ -118,6 +110,179 @@ def prefListDevices() {
 			}
 		}
 	}
+}
+
+
+def summary() {
+	state.installMsg = ""
+    initialize()
+    versionCheck()
+    return dynamicPage(name: "summary",  title: "Summary", install:true, uninstall:true) {
+        section("Installation Details:"){
+			paragraph state.installMsg
+            paragraph state.versionWarning
+		}
+    }
+}
+
+/* Initialization */
+def installed() {
+	if (door1Sensor && state.validatedDoors){
+    	refreshAll()
+        unschedule()
+    	runEvery30Minutes(refreshAll)
+    }
+}
+
+def updated() {
+	log.debug "Updated..."
+    if (state.previousVersion != state.thisSmartAppVersion){
+    	getVersionInfo(state.previousVersion, state.thisSmartAppVersion);
+    }
+    if (door1Sensor && state.validatedDoors){
+    	refreshAll()
+        unschedule()
+    	runEvery30Minutes(refreshAll)
+    }
+}
+
+def uninstall(){
+    log.debug "Removing MyQ Devices..."
+    childDevices.each {
+		try{
+			deleteChildDevice(it.deviceNetworkId, true)
+		}
+		catch (e) {
+			log.debug "Error deleting ${it.deviceNetworkId}: ${e}"
+		}
+	}
+}
+
+def uninstalled() {
+	log.debug "MyQ removal complete."
+    getVersionInfo(state.previousVersion, 0);
+}
+
+def initialize() {
+	unsubscribe()
+    log.debug "Initializing..."
+    login()
+    state.sensorMap = [:]
+
+    // Get initial device status in state.data
+	state.polling = [ last: 0, rescheduler: now() ]
+	state.data = [:]
+
+	// Create selected devices
+	def doorsList = getDoorList()
+	def lightsList = state.lightList
+
+    if (doors != null){
+        def firstDoor = state.validatedDoors[0]
+        //Handle single door (sometimes it's just a dumb string thanks to the simulator)
+        if (doors instanceof String)
+        firstDoor = doors
+
+        //Create door devices
+        createChilDevices(firstDoor, door1Sensor, doorsList[firstDoor], prefDoor1PushButtons)
+        if (state.validatedDoors[1]) createChilDevices(state.validatedDoors[1], door2Sensor, doorsList[state.validatedDoors[1]], prefDoor2PushButtons)
+        if (state.validatedDoors[2]) createChilDevices(state.validatedDoors[2], door3Sensor, doorsList[state.validatedDoors[2]], prefDoor3PushButtons)
+        if (state.validatedDoors[3]) createChilDevices(state.validatedDoors[3], door4Sensor, doorsList[state.validatedDoors[3]], prefDoor4PushButtons)
+        if (state.validatedDoors[4]) createChilDevices(state.validatedDoors[4], door5Sensor, doorsList[state.validatedDoors[4]], prefDoor5PushButtons)
+        if (state.validatedDoors[5]) createChilDevices(state.validatedDoors[5], door6Sensor, doorsList[state.validatedDoors[5]], prefDoor6PushButtons)
+        if (state.validatedDoors[6]) createChilDevices(state.validatedDoors[6], door7Sensor, doorsList[state.validatedDoors[6]], prefDoor7PushButtons)
+        if (state.validatedDoors[7]) createChilDevices(state.validatedDoors[7], door8Sensor, doorsList[state.validatedDoors[7]], prefDoor8PushButtons)
+    }
+
+    //Create light devices
+    def selectedLights = getSelectedDevices("lights")
+    selectedLights.each {
+    	log.debug "Checking for existing light: " + it
+    	if (!getChildDevice(it)) {
+        	log.debug "Creating child light device: " + it
+
+            try{
+            	addChildDevice("brbeaird", "MyQ Light Controller", it, getHubID(), ["name": lightsList[it]])
+                state.installMsg = state.installMsg + lightsList[it] + ": created light device. \r\n\r\n"
+            }
+            catch(physicalgraph.app.exception.UnknownDeviceTypeException e)
+            {
+                log.debug "Error! " + e
+                state.installMsg = state.installMsg + lightsList[it] + ": problem creating light device. Check your IDE to make sure the brbeaird : MyQ Light Controller device handler is installed and published. \r\n\r\n"
+            }
+        }
+        else{
+        	log.debug "Light device already exists: " + it
+            state.installMsg = state.installMsg + lightsList[it] + ": light device already exists. \r\n\r\n"
+        }
+
+    }
+
+    // Remove unselected devices
+    def selectedDevices = [] + getSelectedDevices("doors") + getSelectedDevices("lights")
+    getChildDevices().each{
+        //Modify DNI string for the extra pushbuttons to make sure they don't get deleted unintentionally
+        def DNI = it?.deviceNetworkId
+        DNI = DNI.replace(" Opener", "")
+        DNI = DNI.replace(" Closer", "")
+
+        if (!(DNI in selectedDevices)){
+            log.debug "found device to delete: " + it
+            try{
+                	deleteChildDevice(it.deviceNetworkId, true)
+            } catch (e){
+                	sendPush("Warning: unable to delete door or button - " + it + "- you'll need to manually remove it.")
+                    log.debug "Error trying to delete device " + it + " - " + e
+                    log.debug "Device is likely in use in a Routine, or SmartApp (make sure and check SmarTiles!)."
+            }
+        }
+    }
+
+    //Create subscriptions
+    if (door1Sensor)
+        subscribe(door1Sensor, "contact", sensorHandler)
+    if (door2Sensor)
+        subscribe(door2Sensor, "contact", sensorHandler)
+    if (door3Sensor)
+        subscribe(door3Sensor, "contact", sensorHandler)
+    if (door4Sensor)
+        subscribe(door4Sensor, "contact", sensorHandler)
+    if (door5Sensor)
+        subscribe(door5Sensor, "contact", sensorHandler)
+    if (door6Sensor)
+        subscribe(door6Sensor, "contact", sensorHandler)
+    if (door7Sensor)
+        subscribe(door7Sensor, "contact", sensorHandler)
+    if (door8Sensor)
+        subscribe(door8Sensor, "contact", sensorHandler)
+
+    if (door1Acceleration)
+        subscribe(door1Acceleration, "acceleration", sensorHandler)
+    if (door2Acceleration)
+        subscribe(door2Acceleration, "acceleration", sensorHandler)
+    if (door3Acceleration)
+        subscribe(door3Acceleration, "acceleration", sensorHandler)
+    if (door4Acceleration)
+        subscribe(door4Acceleration, "acceleration", sensorHandler)
+    if (door5Acceleration)
+        subscribe(door5Acceleration, "acceleration", sensorHandler)
+    if (door6Acceleration)
+        subscribe(door6Acceleration, "acceleration", sensorHandler)
+    if (door7Acceleration)
+        subscribe(door7Acceleration, "acceleration", sensorHandler)
+    if (door8Acceleration)
+        subscribe(door8Acceleration, "acceleration", sensorHandler)
+
+    //Set initial values
+    if (door1Sensor && state.validatedDoors){
+    	log.debug "Doing the sync"
+    	syncDoorsWithSensors()
+    }
+
+    //Force a refresh sync with sensors on mode change and each day at sunrise and sunset (in cases where the devices become out of sync)
+    subscribe(location, "mode", refreshAll)
+    subscribe(location, "sunset", refreshAll)
+    subscribe(location, "sunrise", refreshAll)
 }
 
 def getSelectedDevices( settingsName ) {
@@ -400,5 +565,5 @@ private apiPostLogin(apiPath, apiBody = [], callback = {}) {
 
 
 private getApiAppID() {
-    return "NWknvuBd7LoFHfXmKNMBcgajXtZEgKUh4V7WNzMidrpUUluDpVYVZx+xT4PCM5Kx"
+    return "OA9I/hgmPHFp9RYKJqCKfwnhh28uqLJzZ9KOJf1DXoo8N2XAaVX6A1wcLYyWsnnv"
 }
