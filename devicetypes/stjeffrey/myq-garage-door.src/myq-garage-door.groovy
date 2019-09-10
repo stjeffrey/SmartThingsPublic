@@ -7,7 +7,6 @@ metadata {
 		capability "Polling"
 
 		capability "Actuator"
-		capability "Switch"
 		capability "Momentary"
 		capability "Sensor"
         //capability "Health Check" Will be needed eventually for new app compatability but is not documented well enough yet
@@ -34,8 +33,6 @@ metadata {
 				attributeState "open",    label:'${name}', action:"push",  icon:"st.doors.garage.garage-open",    backgroundColor:"#e86d13", nextState: "closing"
 				attributeState "opening", label:'${name}', action:"push",	 icon:"st.doors.garage.garage-opening", backgroundColor:"#cec236"
 				attributeState "closing", label:'${name}', action:"push",	 icon:"st.doors.garage.garage-closing", backgroundColor:"#cec236"
-				attributeState "waiting", label:'${name}', action:"push",	 icon:"st.doors.garage.garage-closing", backgroundColor:"#cec236"
-				attributeState "stopped", label:'${name}', action:"push",  icon:"st.doors.garage.garage-closing", backgroundColor:"#1ee3ff"
 			}
             tileAttribute("device.lastActivity", key: "SECONDARY_CONTROL") {
         		attributeState("lastActivity", label:'Last Activity: ${currentValue}', defaultState: true)
@@ -45,14 +42,6 @@ metadata {
 		standardTile("refresh", "device.door", width: 3, height: 2, decoration: "flat") {
 			state("default", label:'', action:"refresh.refresh", icon:"st.secondary.refresh")
 		}
-		standardTile("contact", "device.contact") {
-			state("open", label:'${name}', icon:"st.contact.contact.open", backgroundColor:"#e86d13")
-			state("closed", label:'${name}', icon:"st.contact.contact.closed", backgroundColor:"#00a0dc")
-		}
-		standardTile("switch", "device.switch") {
-			state("on", label:'${name}', action: "switch.on",  backgroundColor:"#ffa81e")
-			state("off", label:'${name}', action: "switch.off", backgroundColor:"#79b821")
-		}		
         standardTile("openBtn", "device.OpenButton", width: 3, height: 3) {
             state "normal", label: 'Open', icon: "st.doors.garage.garage-open", backgroundColor: "#e86d13", action: "open", nextState: "opening"
             state "opening", label: 'Opening', icon: "st.doors.garage.garage-opening", backgroundColor: "#cec236", action: "open"
@@ -61,26 +50,12 @@ metadata {
             state "normal", label: 'Close', icon: "st.doors.garage.garage-closed", backgroundColor: "#00a0dc", action: "close", nextState: "closing"
             state "closing", label: 'Closing', icon: "st.doors.garage.garage-closing", backgroundColor: "#cec236", action: "close"
 		}
-        valueTile("doorSensor", "device.doorSensor", width: 3, height: 2, inactiveLabel: false, decoration: "flat") {
-			state "default", label:'${currentValue}', backgroundColor:"#ffffff"
-		}
 		valueTile("doorMoving", "device.doorMoving", width: 6, height: 2, inactiveLavel: false, decoration: "flat") {
 			state "default", label: '${currentValue}', backgroundColor:"#ffffff"
 		}        
         main "door"
-		details(["door", "openBtn", "closeBtn", "doorSensor", "refresh"])
+		details(["door", "openBtn", "closeBtn", "refresh"])
 	}
-}
-
-def on() { 	
-    log.debug "Turning door on!"
-    open()
-    sendEvent(name: "switch", value: "on", isStateChange: true, display: true, displayed: true)	
-}
-def off() { 	
-    log.debug "Turning door off!"
-    close()    
-	sendEvent(name: "switch", value: "off", isStateChange: true, display: true, displayed: true)
 }
 
 def push() {	
@@ -122,14 +97,10 @@ def updateDeviceStatus(status) {
     
     def currentState = device.currentState("door")?.value
     
-    def switchState
-    if (device.currentState("switch")?.value == "on"){switchState = "open"}
-    if (device.currentState("switch")?.value == "off"){switchState = "closed"}    
-    
     log.debug "Request received to update door status to : " + status    
     
     //Don't do anything if nothing changed
-    if (currentState == status && switchState == status){
+    if (currentState == status){
     	log.debug "No change; door is already set to " + status
         status = ""
     }
@@ -138,15 +109,11 @@ def updateDeviceStatus(status) {
 		case "open":
     		log.debug "Door is now open"
 			sendEvent(name: "door", value: "open", display: true, isStateChange: true, descriptionText: device.displayName + " is open") 
-			sendEvent(name: "contact", value: "open", display: false, displayed: false, isStateChange: true)	// make sure we update the hidden states as well
-        	sendEvent(name: "switch", value: "on", display: false, displayed: false, isStateChange: true)		// on == open            
             break
             
         case "closed":
 			log.debug "Door is now closed"
         	sendEvent(name: "door", value: "closed", display: true, isStateChange: true, descriptionText: device.displayName + " is closed")
-			sendEvent(name: "contact", value: "closed", display: false, displayed: false, isStateChange: true)	// update hidden states
-        	sendEvent(name: "switch", value: "off", display: false, displayed: false, isStateChange: true)		// off == closed            
             break
             
 		case "opening":
@@ -188,16 +155,8 @@ def updateDeviceLastActivity(lastActivity) {
 	sendEvent(name: "lastActivity", value: finalString, display: false , displayed: false)
 }
 
-def updateDeviceSensor(sensor) {	
-	sendEvent(name: "doorSensor", value: sensor, display: false , displayed: false)
-}
-
 def updateDeviceMoving(moving) {	
 	sendEvent(name: "doorMoving", value: moving, display: false , displayed: false)
-}
-
-def log(msg){
-	log.debug msg
 }
 
 def showVersion(){
