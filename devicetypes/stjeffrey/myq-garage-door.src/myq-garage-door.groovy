@@ -162,3 +162,7 @@ def updateDeviceMoving(moving) {
 def showVersion(){
 	return "1.0.0"
 }
+
+def log(msg){
+	log.debug msg
+}

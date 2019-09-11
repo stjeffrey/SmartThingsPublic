@@ -18,13 +18,6 @@ preferences {
     page(name: "preferences_Login", title: "MyQ")
 	page(name: "prefListDevices", title: "MyQ")
     page(name: "prefSensor1", title: "MyQ")
-/*    page(name: "prefSensor2", title: "MyQ")
-    page(name: "prefSensor3", title: "MyQ")
-    page(name: "prefSensor4", title: "MyQ")
-    page(name: "prefSensor5", title: "MyQ")
-    page(name: "prefSensor6", title: "MyQ")
-    page(name: "prefSensor7", title: "MyQ")
-    page(name: "prefSensor8", title: "MyQ")
     page(name: "noDoorsSelected", title: "MyQ") */
     page(name: "summary", title: "MyQ")
     page(name: "prefUninstall", title: "MyQ")
@@ -36,9 +29,6 @@ def preferences_Login() {
 		section("Login Credentials"){
 			input("username", "email", title: "Username", description: "Email")
 			input("password", "password", title: "Password", description: "Password")
-		}
-		section("Gateway Brand"){
-			input(name: "brand", title: "Gateway Brand", type: "enum",  metadata:[values:["Liftmaster","Chamberlain","Craftsman"]] )
 		}
         section("Uninstall") {
             paragraph "Tap below to completely uninstall this SmartApp and devices (doors and lamp control devices will be force-removed from automations and SmartApps)"
@@ -443,7 +433,7 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
 /* Access Management */
 private forceLogin() {
 	//Reset token and expiry
-	state.session = [ brandID: 0, brandName: settings.brand, securityToken: null, expiration: 0 ]
+	state.session = [ securityToken: null, expiration: 0 ]
 	state.polling = [ last: 0, rescheduler: now() ]
 	state.data = [:]
 	return doLogin()
@@ -462,14 +452,12 @@ private doLogin() {
 
     return apiPostLogin("/api/v4/User/Validate", [username: settings.username, password: settings.password] ) { response ->
         if (response.data.SecurityToken != null) {
-//            state.session.brandID = response.data.BrandId
-//            state.session.brandName = response.data.BrandName
             state.session.securityToken = response.data.SecurityToken
             state.session.expiration = now() + (7*24*60*60*1000) // 7 days default
             return true
         } else {
             log.warn "No security token found, login unsuccessful"
-            state.session = [ brandID: 0, brandName: settings.brand, securityToken: null, expiration: 0 ] // Reset token and expiration
+            state.session = [ securityToken: null, expiration: 0 ] // Reset token and expiration
             return false
         }
     }
@@ -785,9 +773,6 @@ private apiGet(apiPath, apiQuery = [], callback = {}) {
     def myHeaders = [
         "User-Agent": "Chamberlain/3.73",
         "SecurityToken": state.session.securityToken,
-//        "BrandId": "2",
-//        "ApiVersion": "4.1",
-//        "Culture": "en",
         "MyQApplicationId": getApiAppID()
     ]
 
@@ -840,9 +825,6 @@ private apiPut(apiPath, apiBody = [], callback = {}) {
     def myHeaders = [
         "User-Agent": "Chamberlain/3.73",
         "SecurityToken": state.session.securityToken,
-//        "BrandId": "2",
-//        "ApiVersion": "4.1",
-//        "Culture": "en",
         "MyQApplicationId": getApiAppID()
     ]
 
@@ -956,7 +938,7 @@ private getRefreshList(id) {
         log.debug "Found correct door, returning the door state: " + doorState
         return doorState
     } else {
-        return - 1
+        return -1
     }
 }
 
@@ -972,9 +954,6 @@ private getDevicesURL() {
 private apiPostLogin(apiPath, apiBody = [], callback = {}) {
     def myHeaders = [
         "User-Agent": "Chamberlain/3.73",
-//        "BrandId": "2",
-//        "ApiVersion": "4.1",
-//        "Culture": "en",
         "MyQApplicationId": getApiAppID()
     ]
 
