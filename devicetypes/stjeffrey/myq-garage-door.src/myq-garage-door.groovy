@@ -42,6 +42,7 @@ metadata {
 		standardTile("refresh", "device.door", width: 3, height: 2, decoration: "flat") {
 			state("default", label:'', action:"refresh.refresh", icon:"st.secondary.refresh")
 		}
+
         standardTile("openBtn", "device.OpenButton", width: 3, height: 3) {
             state "normal", label: 'Open', icon: "st.doors.garage.garage-open", backgroundColor: "#e86d13", action: "open", nextState: "opening"
             state "opening", label: 'Opening', icon: "st.doors.garage.garage-opening", backgroundColor: "#cec236", action: "open"
@@ -80,7 +81,7 @@ def close() {
 	log.debug "Garage door close command called."
     parent.notify("Garage door close command called.")
 	parent.sendCommand(this, "desireddoorstate", 0) 
-//	updateDeviceStatus("closing")			// Now handled in the parent (in case we have an Acceleration sensor, we can handle "waiting" state)
+	updateDeviceStatus("closing")			// Now handled in the parent (in case we have an Acceleration sensor, we can handle "waiting" state)
     runIn(30, refresh, [overwrite: true]) //Force a sync with tilt sensor after 30 seconds
 }
 
@@ -151,7 +152,8 @@ def updateDeviceStatus(status) {
 }
 
 def updateDeviceLastActivity(lastActivity) {
-	def finalString = lastActivity?.format('MM/d/yyyy hh:mm a',location.timeZone)    
+	def finalString = lastActivity?.format('MM/d/yyyy hh:mm a',location.timeZone)
+	log.debug "final date:" + finalString    
 	sendEvent(name: "lastActivity", value: finalString, display: false , displayed: false)
 }
 

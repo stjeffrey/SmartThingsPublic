@@ -18,7 +18,7 @@ preferences {
     page(name: "preferences_Login", title: "MyQ")
 	page(name: "prefListDevices", title: "MyQ")
     page(name: "prefSensor1", title: "MyQ")
-    page(name: "noDoorsSelected", title: "MyQ") */
+    page(name: "noDoorsSelected", title: "MyQ")
     page(name: "summary", title: "MyQ")
     page(name: "prefUninstall", title: "MyQ")
 }
@@ -29,6 +29,9 @@ def preferences_Login() {
 		section("Login Credentials"){
 			input("username", "email", title: "Username", description: "Email")
 			input("password", "password", title: "Password", description: "Password")
+		}
+		section("Gateway Brand"){
+			input(name: "brand", title: "Gateway Brand", type: "enum",  metadata:[values:["Liftmaster","Chamberlain","Craftsman"]] )
 		}
         section("Uninstall") {
             paragraph "Tap below to completely uninstall this SmartApp and devices (doors and lamp control devices will be force-removed from automations and SmartApps)"
@@ -58,7 +61,6 @@ def prefUninstall() {
 		}
     }
 }
-
 
 def prefListDevices() {
     if (forceLogin()) {
@@ -261,13 +263,6 @@ def initialize() {
         
         //Create door devices
         createChilDevices(firstDoor, door1Sensor, doorsList[firstDoor], prefDoor1PushButtons)
-        if (state.validatedDoors[1]) createChilDevices(state.validatedDoors[1], door2Sensor, doorsList[state.validatedDoors[1]], prefDoor2PushButtons)
-        if (state.validatedDoors[2]) createChilDevices(state.validatedDoors[2], door3Sensor, doorsList[state.validatedDoors[2]], prefDoor3PushButtons)
-        if (state.validatedDoors[3]) createChilDevices(state.validatedDoors[3], door4Sensor, doorsList[state.validatedDoors[3]], prefDoor4PushButtons)
-        if (state.validatedDoors[4]) createChilDevices(state.validatedDoors[4], door5Sensor, doorsList[state.validatedDoors[4]], prefDoor5PushButtons)
-        if (state.validatedDoors[5]) createChilDevices(state.validatedDoors[5], door6Sensor, doorsList[state.validatedDoors[5]], prefDoor6PushButtons)
-        if (state.validatedDoors[6]) createChilDevices(state.validatedDoors[6], door7Sensor, doorsList[state.validatedDoors[6]], prefDoor7PushButtons)
-        if (state.validatedDoors[7]) createChilDevices(state.validatedDoors[7], door8Sensor, doorsList[state.validatedDoors[7]], prefDoor8PushButtons)
     }
 
     // Remove unselected devices
@@ -293,20 +288,6 @@ def initialize() {
     //Create subscriptions
     if (door1Sensor)
         subscribe(door1Sensor, "contact", sensorHandler)
-    if (door2Sensor)
-        subscribe(door2Sensor, "contact", sensorHandler)
-    if (door3Sensor)
-        subscribe(door3Sensor, "contact", sensorHandler)
-    if (door4Sensor)
-        subscribe(door4Sensor, "contact", sensorHandler)
-    if (door5Sensor)
-        subscribe(door5Sensor, "contact", sensorHandler)
-    if (door6Sensor)
-        subscribe(door6Sensor, "contact", sensorHandler)
-    if (door7Sensor)
-        subscribe(door7Sensor, "contact", sensorHandler)
-    if (door8Sensor)
-        subscribe(door8Sensor, "contact", sensorHandler)
 
     //Set initial values
     if (door1Sensor && state.validatedDoors){
@@ -315,9 +296,9 @@ def initialize() {
     }
 
     //Force a refresh sync with sensors on mode change and each day at sunrise and sunset (in cases where the devices become out of sync)
-    //subscribe(location, "mode", refreshAll)
-    //subscribe(location, "sunset", refreshAll)
-    //subscribe(location, "sunrise", refreshAll)
+    subscribe(location, "mode", refreshAll)
+    subscribe(location, "sunset", refreshAll)
+    subscribe(location, "sunrise", refreshAll)
 }
 
 def getSelectedDevices( settingsName ) {
@@ -433,7 +414,7 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
 /* Access Management */
 private forceLogin() {
 	//Reset token and expiry
-	state.session = [ securityToken: null, expiration: 0 ]
+	state.session = [ brandID: 0, brandName: settings.brand, securityToken: null, expiration: 0 ]
 	state.polling = [ last: 0, rescheduler: now() ]
 	state.data = [:]
 	return doLogin()
@@ -452,12 +433,14 @@ private doLogin() {
 
     return apiPostLogin("/api/v4/User/Validate", [username: settings.username, password: settings.password] ) { response ->
         if (response.data.SecurityToken != null) {
+//            state.session.brandID = response.data.BrandId
+//            state.session.brandName = response.data.BrandName
             state.session.securityToken = response.data.SecurityToken
             state.session.expiration = now() + (7*24*60*60*1000) // 7 days default
             return true
         } else {
             log.warn "No security token found, login unsuccessful"
-            state.session = [ securityToken: null, expiration: 0 ] // Reset token and expiration
+            state.session = [ brandID: 0, brandName: settings.brand, securityToken: null, expiration: 0 ] // Reset token and expiration
             return false
         }
     }
@@ -478,32 +461,9 @@ def syncDoorsWithSensors(child){
         	case firstDoor:
             	updateDoorStatus(firstDoor, door1Sensor, door1Acceleration, door1ThreeAxis, child)
                 break
-            case state.validatedDoors[1]:
-            	updateDoorStatus(state.validatedDoors[1], door2Sensor, door2Acceleration, door2ThreeAxis, child)
-                break
-            case state.validatedDoors[2]:
-            	updateDoorStatus(state.validatedDoors[2], door3Sensor, door3Acceleration, door3ThreeAxis, child)
-                break
-            case state.validatedDoors[3]:
-            	updateDoorStatus(state.validatedDoors[3], door4Sensor, door4Acceleration, door4ThreeAxis, child)
-            case state.validatedDoors[4]:
-            	updateDoorStatus(state.validatedDoors[4], door5Sensor, door5Acceleration, door5ThreeAxis, child)
-            case state.validatedDoors[5]:
-            	updateDoorStatus(state.validatedDoors[5], door6Sensor, door6Acceleration, door6hreeAxis, child)
-            case state.validatedDoors[6]:
-            	updateDoorStatus(state.validatedDoors[6], door7Sensor, door7Acceleration, door7ThreeAxis, child)
-            case state.validatedDoors[7]:
-            	updateDoorStatus(state.validatedDoors[7], door8Sensor, door8Acceleration, door8ThreeAxis, child)
      	}
     } else {    					// refresh ALL the doors
 		if (firstDoor) updateDoorStatus(firstDoor, door1Sensor, door1Acceleration, door1ThreeAxis, null)
-		if (state.validatedDoors[1]) updateDoorStatus(state.validatedDoors[1], door2Sensor, door2Acceleration, door2ThreeAxis, null)
-		if (state.validatedDoors[2]) updateDoorStatus(state.validatedDoors[2], door3Sensor, door3Acceleration, door3ThreeAxis, null)
-		if (state.validatedDoors[3]) updateDoorStatus(state.validatedDoors[3], door4Sensor, door4Acceleration, door4ThreeAxis, null)
-        if (state.validatedDoors[4]) updateDoorStatus(state.validatedDoors[4], door5Sensor, door5Acceleration, door5ThreeAxis, null)
-        if (state.validatedDoors[5]) updateDoorStatus(state.validatedDoors[5], door6Sensor, door6Acceleration, door6ThreeAxis, null)
-        if (state.validatedDoors[6]) updateDoorStatus(state.validatedDoors[6], door7Sensor, door7Acceleration, door7ThreeAxis, null)
-        if (state.validatedDoors[7]) updateDoorStatus(state.validatedDoors[7], door8Sensor, door8Acceleration, door8ThreeAxis, null)
     }
 }
 
@@ -574,10 +534,22 @@ def refresh(child){
     def door = child.device.deviceNetworkId
     def doorName = state.data[door].name
     child.log("refresh called for " + doorName + ' (' + door + ')')
-    // syncDoorsWithSensors(child)
 
-    def state = getRefreshList(doorName)
+    def stateAndTime = getRefreshList(doorName)
+    def state = stateAndTime.split("\\|")[0]
+    def epoch = stateAndTime.split("\\|")[1]
+    def lastEvent
+
+    log.debug "epoch: " + epoch
+    try {
+        lastEvent = new Date(Long.valueOf(epoch))
+        log.debug "lastevent: " + lastEvent
+    } catch(e) {
+        log.error e
+    }
+
     log.debug "state is: " + state
+    log.debug "last event is: " + lastEvent
     switch (state) {
         case 1:
         case "1":
@@ -599,21 +571,18 @@ def refresh(child){
         default:
             child.updateDeviceStatus("unknown")
     }
+
+    if(lastEvent != null) {
+        child.updateDeviceLastActivity(lastEvent)
+    }
 }
 
 def refreshAll(){
     log.debug "refresh all"
     def devices = getRefreshList()
-	log.debug "done api call"
-
-    log.debug "iterating devices"
     getChildDevices().each{
-        //syncDoorsWithSensors(it)
-        log.debug "device: " + it
+        refresh(it)
     }
-    
-
-
 }
 
 def refreshAll(evt){
@@ -636,27 +605,6 @@ def sensorHandler(evt) {
             def firstDoor = state.validatedDoors[0]
 			if (doors instanceof String) firstDoor = doors
         	updateDoorStatus(firstDoor, door1Sensor, door1Acceleration, door1ThreeAxis, null)
-            break
-    	case door2Sensor?.id:
-        	updateDoorStatus(state.validatedDoors[1], door2Sensor, door2Acceleration, door2ThreeAxis, null)
-            break
-        case door3Sensor?.id:
-        	updateDoorStatus(state.validatedDoors[2], door3Sensor, door3Acceleration, door3ThreeAxis, null)
-            break
-    	case door4Sensor?.id:
-        	updateDoorStatus(state.validatedDoors[3], door4Sensor, door4Acceleration, door4ThreeAxis, null)
-            break
-        case door5Sensor?.id:
-        	updateDoorStatus(state.validatedDoors[4], door5Sensor, door5Acceleration, door5ThreeAxis, null)
-            break
-        case door6Sensor?.id:
-        	updateDoorStatus(state.validatedDoors[5], door6Sensor, door6Acceleration, door6ThreeAxis, null)
-            break
-        case door7Sensor?.id:
-        	updateDoorStatus(state.validatedDoors[6], door7Sensor, door7Acceleration, door7ThreeAxis, null)
-            break
-        case door8Sensor?.id:
-        	updateDoorStatus(state.validatedDoors[7], door8Sensor, door8Acceleration, door8ThreeAxis, null)
             break
         default:
 			syncDoorsWithSensors()
@@ -785,6 +733,7 @@ private apiGet(apiPath, apiQuery = [], callback = {}) {
             if (response.status == 200) {
                 switch (response.data.ReturnCode as Integer) {
                     case -3333: // Login again
+                        state.session.securityToken = null
                         log.debug "Need to login again"
                         log.debug "retry count: " + atomicState.retryCount + " max retries: " + MAX_RETRIES
                     	if (atomicState.retryCount <= MAX_RETRIES) {
@@ -825,6 +774,9 @@ private apiPut(apiPath, apiBody = [], callback = {}) {
     def myHeaders = [
         "User-Agent": "Chamberlain/3.73",
         "SecurityToken": state.session.securityToken,
+//        "BrandId": "2",
+//        "ApiVersion": "4.1",
+//        "Culture": "en",
         "MyQApplicationId": getApiAppID()
     ]
 
@@ -871,7 +823,6 @@ private getDeviceList() {
 				if (!(device.MyQDeviceTypeId == 1||device.MyQDeviceTypeId == 2||device.MyQDeviceTypeId == 3||device.MyQDeviceTypeId == 5||device.MyQDeviceTypeId == 7)) {
                     device.Attributes.each {
 						def description = ''
-                        def doorState = ''
                         def updatedTime = ''
                         if (it.AttributeDisplayName=="desc")	//deviceList[dni] = it.Value
                         	description = it.Value
@@ -893,6 +844,7 @@ private getRefreshList(id) {
 	def deviceList = []
     def correctDoor = false
     def doorState = 0
+    def updatedTime
     log.debug "getRefreshList, id: " + id
 	apiGet(getDevicesURL(), []) { response ->
 		if (response.status == 200) {
@@ -913,32 +865,18 @@ private getRefreshList(id) {
 						if (it.AttributeDisplayName=="doorstate") {
                         	log.debug "door state: " + it.Value
                             doorState = it.Value
-                            //door.updatedTime = it.UpdatedTime
-						}
-                            
-                        if (it.AttributeDisplayName=="deviceName") {
-                        	// if(it.Value == id) {
-                            //     correctDoor = true
-                            // }
-                            //door.deviceName = it.Value
+                            updatedTime = it.UpdatedTime
 						}
 					}
-
-                    //Ignore any doors with blank descriptions
-                    // if (door.description && door.description != '') {
-                    //     log.debug "found device: " + door.description
-                    //     log.debug "api call for door: " + device.MyQDeviceId + " state is: " + door.doorState + " at: " + door.updatedTime
-                    //     deviceList[door.deviceName] = door
-                    // }
 				}
 			}
 		}
 	}
     if (correctDoor) {
-        log.debug "Found correct door, returning the door state: " + doorState
-        return doorState
+        log.debug "Found correct door, returning the door state: " + doorState + "|" + updatedTime
+        return doorState + "|" + updatedTime
     } else {
-        return -1
+        return - 1
     }
 }
 
@@ -982,7 +920,6 @@ private apiPostLogin(apiPath, apiBody = [], callback = {}) {
     return false
 }
 
-
 // Send command to start or stop
 def sendCommand(child, attributeName, attributeValue) {
 	state.lastCommandSent = now()
@@ -998,33 +935,11 @@ def sendCommand(child, attributeName, attributeValue) {
         		case firstDoor:
                 	if (door1Sensor){if (door1Acceleration) child.updateDeviceStatus("waiting") else child.updateDeviceStatus("closing")}
                 	break
-            	case state.validatedDoors[1]:
-            		if (door2Sensor){if (door2Acceleration) child.updateDeviceStatus("waiting") else child.updateDeviceStatus("closing")}
-                	break
-            	case state.validatedDoors[2]:
-            		if (door3Sensor){if (door3Acceleration) child.updateDeviceStatus("waiting") else child.updateDeviceStatus("closing")}
-                	break
-            	case state.validatedDoors[3]:
-            		if (door4Sensor){if (door4Acceleration) child.updateDeviceStatus("waiting") else child.updateDeviceStatus("closing")}
-        			break
-                case state.validatedDoors[4]:
-            		if (door5Sensor){if (door5Acceleration) child.updateDeviceStatus("waiting") else child.updateDeviceStatus("closing")}
-        			break
-                case state.validatedDoors[5]:
-            		if (door6Sensor){if (door6Acceleration) child.updateDeviceStatus("waiting") else child.updateDeviceStatus("closing")}
-        			break
-                case state.validatedDoors[6]:
-            		if (door7Sensor){if (door7Acceleration) child.updateDeviceStatus("waiting") else child.updateDeviceStatus("closing")}
-        			break
-                case state.validatedDoors[7]:
-            		if (door8Sensor){if (door8Acceleration) child.updateDeviceStatus("waiting") else child.updateDeviceStatus("closing")}
-        			break
             }
         }
 		return true
 	}
 }
-
 
 // Get Device ID
 def getChildDeviceID(child) {
@@ -1040,7 +955,6 @@ def getDeviceStatus(child) {
 def getDeviceLastActivity(child) {
 	return state.data[child.device.deviceNetworkId].lastAction.toLong()
 }
-
 
 def notify(message){
 	sendNotificationEvent(message)
