@@ -210,7 +210,7 @@ def installed() {
 	if (door1Sensor && state.validatedDoors){
     	refreshAll()
         unschedule()
-    	runEvery30Minutes(refreshAll)
+    	runEvery5Minutes(refreshAll)
     }
 }
 
@@ -219,7 +219,7 @@ def updated() {
     if (door1Sensor && state.validatedDoors){
     	refreshAll()
         unschedule()
-    	runEvery30Minutes(refreshAll)
+    	runEvery5Minutes(refreshAll)
     }
 }
 

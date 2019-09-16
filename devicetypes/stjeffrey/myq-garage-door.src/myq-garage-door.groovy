@@ -86,12 +86,15 @@ def close() {
 }
 
 def refresh() {	    
-    parent.refresh(this)
+	parent.refresh(this)
     sendEvent(name: "OpenButton", value: "normal", displayed: false, isStateChange: true)
     sendEvent(name: "CloseButton", value: "normal", displayed: false, isStateChange: true)
 }
 
-def poll() { refresh() }
+def poll() { 
+	refresh()
+    schedule("0 0/5 * * * ?", poll)
+}
 
 // update status
 def updateDeviceStatus(status) {	
@@ -101,20 +104,22 @@ def updateDeviceStatus(status) {
     log.debug "Request received to update door status to : " + status    
     
     //Don't do anything if nothing changed
-    if (currentState == status){
-    	log.debug "No change; door is already set to " + status
-        status = ""
-    }
+    // if (currentState == status){
+    	// log.debug "No change; door is already set to " + status
+        // status = ""
+    // }
     
     switch (status) {
 		case "open":
     		log.debug "Door is now open"
 			sendEvent(name: "door", value: "open", display: true, isStateChange: true, descriptionText: device.displayName + " is open") 
+            sendEvent(name: "contact", value: "open")
             break
             
         case "closed":
 			log.debug "Door is now closed"
         	sendEvent(name: "door", value: "closed", display: true, isStateChange: true, descriptionText: device.displayName + " is closed")
+            sendEvent(name: "contact", value: "closed")
             break
             
 		case "opening":
