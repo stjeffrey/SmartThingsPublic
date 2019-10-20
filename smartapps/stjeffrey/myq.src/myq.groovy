@@ -431,10 +431,11 @@ private login() {
 private doLogin() {
     log.trace "Logging in"
 
-    return apiPostLogin("/api/v4/User/Validate", [username: settings.username, password: settings.password] ) { response ->
+    return apiPostLogin("/api/v5/Login", [username: settings.username, password: settings.password] ) { response ->
         if (response.data.SecurityToken != null) {
 //            state.session.brandID = response.data.BrandId
 //            state.session.brandName = response.data.BrandName
+            log.debug(response.data.Security)
             state.session.securityToken = response.data.SecurityToken
             state.session.expiration = now() + (7*24*60*60*1000) // 7 days default
             return true
@@ -530,51 +531,18 @@ def updateDoorStatus(doorDNI, sensor, acceleration, threeAxis, child){
 }
 
 def refresh(child){
-    child.log("refresh child")
-    def door = child.device.deviceNetworkId
-    def doorName = state.data[door].name
-    child.log("refresh called for " + doorName + ' (' + door + ')')
+    child.log("refresh called for " + child.device.deviceNetworkId)
 
-    def stateAndTime = getRefreshList(doorName)
+    def stateAndTime = refreshItem(child, child.device.deviceNetworkId)
+    child.log("stateAndTime is: " + stateAndTime)
     def state = stateAndTime.split("\\|")[0]
-    def epoch = stateAndTime.split("\\|")[1]
-    def lastEvent
-
-    log.debug "epoch: " + epoch
-    try {
-        lastEvent = new Date(Long.valueOf(epoch))
-        log.debug "lastevent: " + lastEvent
-    } catch(e) {
-        log.error e
-    }
-
-    log.debug "state is: " + state
-    log.debug "last event is: " + lastEvent
-    switch (state) {
-        case 1:
-        case "1":
-            child.updateDeviceStatus("open")
-            break
-        case "2":
-        case 2:
-            child.updateDeviceStatus("closed")
-            break
-        case "3":
-            child.updateDeviceStatus("stopped")
-            break
-        case "4":
-            child.updateDeviceStatus("opening")
-            break
-        case "5":
-            child.updateDeviceStatus("closing")
-            break
-        default:
-            child.updateDeviceStatus("unknown")
-    }
-
-    if(lastEvent != null) {
-        child.updateDeviceLastActivity(lastEvent)
-    }
+    def lastEvent = stateAndTime.split("\\|")[1]
+    
+    child.log(Date.parse("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", lastEvent))
+    child.log "state is: " + state
+    child.log "last event is: " + lastEvent
+    child.updateDeviceStatus(state)
+    child.updateDeviceLastActivity(new Date(lastEvent))
 }
 
 def refreshAll(){
@@ -708,52 +676,30 @@ private getDoorList() {
 
 // HTTP GET call
 private apiGet(apiPath, apiQuery = [], callback = {}) {
-    if (!state.session.securityToken) { // Get a token
+    log.debug('making apiget call')
+    //if (!state.session.securityToken) { // Get a token
         log.debug "need to log in before making api get call"
         if (!doLogin()) {
             log.error "Unable to complete GET, login failed"
             return
         }
-    }
+    //}
     
     log.debug "securityToken = " + state.session.securityToken
 
     def myHeaders = [
-        "User-Agent": "Chamberlain/3.73",
+        "User-Agent": "Chamberlain/10482 CFNetwork/978.0.7 Darwin/18.6.0",
         "SecurityToken": state.session.securityToken,
         "MyQApplicationId": getApiAppID()
     ]
 
 	try {
-    	log.debug "making get call, querypath = " + apiPath
-        log.debug "query = " + apiQuery
-        log.debug "headers = " + myHeaders
+        //log.debug "query = " + apiQuery
+        //log.debug "headers = " + myHeaders
         httpGet([ uri: getApiURL(), path: apiPath, headers: myHeaders, query: apiQuery ]) { response ->
-            log.debug "Got GET response: Retry: ${atomicState.retryCount} of ${MAX_RETRIES}\nSTATUS: ${response.status}\nHEADERS: ${response.headers?.collect { "${it.name}: ${it.value}\n" }}\nDATA: ${response.data}"
+            //log.debug "Got GET response: Retry: ${atomicState.retryCount} of ${MAX_RETRIES}\nSTATUS: ${response.status}\nHEADERS: ${response.headers?.collect { "${it.name}: ${it.value}\n" }}\nDATA: ${response.data}"
             if (response.status == 200) {
-                switch (response.data.ReturnCode as Integer) {
-                    case -3333: // Login again
-                        state.session.securityToken = null
-                        log.debug "Need to login again"
-                        log.debug "retry count: " + atomicState.retryCount + " max retries: " + MAX_RETRIES
-                    	if (atomicState.retryCount <= MAX_RETRIES) {
-                        	atomicState.retryCount = (atomicState.retryCount ?: 0) + 1
-                            log.warn "GET: Login expired, logging in again"
-                            doLogin()
-                            apiGet(apiPath, apiQuery, callback) // Try again
-                        } else {
-                            log.warn "Too many retries, dropping request"
-                        }
-                        break
-
-                    case 0: // Process response
-                    	atomicState.retryCount = 0 // Reset it
-                    	callback(response)
-                        break
-
-                    default:
-                    	log.error "Unknown GET return code ${response.data.ReturnCode}, error ${response.data.ErrorMessage}"
-                }
+                callback(response)
             } else {
                 log.error "Unknown GET status: ${response.status}"
             }
@@ -772,7 +718,7 @@ private apiPut(apiPath, apiBody = [], callback = {}) {
         }
     }
     def myHeaders = [
-        "User-Agent": "Chamberlain/3.73",
+        "User-Agent": "Chamberlain/10482 CFNetwork/978.0.7 Darwin/18.6.0",
         "SecurityToken": state.session.securityToken,
 //        "BrandId": "2",
 //        "ApiVersion": "4.1",
@@ -840,73 +786,44 @@ private getDeviceList() {
 	return deviceList
 }
 
-private getRefreshList(id) {
-	def deviceList = []
-    def correctDoor = false
-    def doorState = 0
-    def updatedTime
-    log.debug "getRefreshList, id: " + id
-	apiGet(getDevicesURL(), []) { response ->
-		if (response.status == 200) {
-			response.data.Devices.each { device ->
-				log.debug "MyQDeviceTypeId : " + device.MyQDeviceTypeId.toString()
-                if (!(device.MyQDeviceTypeId == 1||device.MyQDeviceTypeId == 2||device.MyQDeviceTypeId == 3||device.MyQDeviceTypeId == 5||device.MyQDeviceTypeId == 7)) {
-                    device.Attributes.each {
-                        //log.debug(it.AttributeDisplayName + ": " + it.Value)
-                        
-                        if (it.AttributeDisplayName=="desc") {	//deviceList[dni] = it.Value
-                        	log.debug "door name: " + it.Value
-                            //door.description = it.Value
-                            if(it.Value == id) {
-                                correctDoor = true
-                            }
-                        }
-
-						if (it.AttributeDisplayName=="doorstate") {
-                        	log.debug "door state: " + it.Value
-                            doorState = it.Value
-                            updatedTime = it.UpdatedTime
-						}
-					}
-				}
-			}
-		}
-	}
-    if (correctDoor) {
-        log.debug "Found correct door, returning the door state: " + doorState + "|" + updatedTime
-        return doorState + "|" + updatedTime
-    } else {
-        return - 1
+private refreshItem(device, id) {
+    device.log("getRefreshList, id: " + id)
+    def url = getDeviceURL(id)
+    apiGet(url, []) { response ->
+        device.log('got a response');
+        device.log(response.data)
+        if (response.status == 200) {
+            device.log "state is: ${response.data.state.door_state}"
+            return response.data.state.door_state + "|" + response.data.state.last_update
+        } else {
+            return -1
+        }
     }
 }
 
 private getApiURL() {
-	return "https://myqexternal.myqdevice.com"
+	return "https://api.myqdevice.com"
 }
 
 private getDevicesURL() {
-	return "/api/v4/UserDeviceDetails/Get"
+	return "/api/v5/Accounts/b20c88a6-7ac9-484b-b32e-706e577bea30/Devices"
+}
+
+private getDeviceURL(deviceId) {
+	return "/api/v5/Accounts/b20c88a6-7ac9-484b-b32e-706e577bea30/devices/" + deviceId
 }
 
 // HTTP POST call
 private apiPostLogin(apiPath, apiBody = [], callback = {}) {
     def myHeaders = [
-        "User-Agent": "Chamberlain/3.73",
+        "User-Agent": "Chamberlain/10482 CFNetwork/978.0.7 Darwin/18.6.0",
         "MyQApplicationId": getApiAppID()
     ]
 
     try {
         return httpPost([ uri: getApiURL(), path: apiPath, headers: myHeaders, body: apiBody ]) { response ->
-            log.debug "Got LOGIN POST response: STATUS: ${response.status}\nHEADERS: ${response.headers?.collect { "${it.name}: ${it.value}\n" }}\nDATA: ${response.data}"
             if (response.status == 200) {
-                switch (response.data.ReturnCode as Integer) {
-                    case 0: // Process response
-                    	return callback(response)
-                        break
-
-                    default:
-                    	log.error "Unknown LOGIN POST return code ${response.data.ReturnCode}, error ${response.data.ErrorMessage}"
-                }
+                    return callback(response)
             } else {
                 log.error "Unknown LOGIN POST status: ${response.status}"
             }
@@ -961,5 +878,5 @@ def notify(message){
 }
 
 private getApiAppID() {
-    return "OA9I/hgmPHFp9RYKJqCKfwnhh28uqLJzZ9KOJf1DXoo8N2XAaVX6A1wcLYyWsnnv"
+    return "JVM/G9Nwih5BwKgNCjLxiFUQxQijAebyyg8QUHr7JOrP+tuPb8iHfRHKwTmDzHOu"
 }
