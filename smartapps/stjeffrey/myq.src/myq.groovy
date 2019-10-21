@@ -30,9 +30,6 @@ def preferences_Login() {
 			input("username", "email", title: "Username", description: "Email")
 			input("password", "password", title: "Password", description: "Password")
 		}
-		section("Gateway Brand"){
-			input(name: "brand", title: "Gateway Brand", type: "enum",  metadata:[values:["Liftmaster","Chamberlain","Craftsman"]] )
-		}
         section("Uninstall") {
             paragraph "Tap below to completely uninstall this SmartApp and devices (doors and lamp control devices will be force-removed from automations and SmartApps)"
             href(name: "href", title: "Uninstall", required: false, page: "prefUninstall")
@@ -77,12 +74,6 @@ def prefListDevices() {
                     section("Select which garage door/gate to use"){
                         input(name: "doors", type: "enum", required:false, multiple:true, metadata:[values:state.doorList])
                     }
-                }
-                section("Advanced (optional)", hideable: true, hidden:true){
-                    paragraph "BETA: Enable the below option if you would like to force the Garage Doors to behave as Door Locks (sensor required)." +
-                        "This may be desirable if you only want doors to open up via PIN with Alexa voice commands. " +
-                        "Note this is still considered highly experimental and may break many other automations/apps that need the garage door capability."
-                    input "prefUseLockType", "bool", required: false, title: "Create garage doors as door locks?"
                 }
             }
 
@@ -243,7 +234,6 @@ def initialize() {
 	unsubscribe()
     log.debug "Initializing..."
     login()
-    state.sensorMap = [:]
 
     // Get initial device status in state.data
 	state.polling = [ last: 0, rescheduler: now() ]
@@ -285,9 +275,6 @@ def initialize() {
         }
     }
 
-    //Create subscriptions
-    if (door1Sensor)
-        subscribe(door1Sensor, "contact", sensorHandler)
 
     //Set initial values
     if (door1Sensor && state.validatedDoors){
@@ -414,7 +401,7 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
 /* Access Management */
 private forceLogin() {
 	//Reset token and expiry
-	state.session = [ brandID: 0, brandName: settings.brand, securityToken: null, expiration: 0 ]
+	state.session = [ securityToken: null, expiration: 0 ]
 	state.polling = [ last: 0, rescheduler: now() ]
 	state.data = [:]
 	return doLogin()
@@ -433,15 +420,12 @@ private doLogin() {
 
     return apiPostLogin("/api/v5/Login", [username: settings.username, password: settings.password] ) { response ->
         if (response.data.SecurityToken != null) {
-//            state.session.brandID = response.data.BrandId
-//            state.session.brandName = response.data.BrandName
-            log.debug(response.data.Security)
             state.session.securityToken = response.data.SecurityToken
             state.session.expiration = now() + (7*24*60*60*1000) // 7 days default
             return true
         } else {
             log.warn "No security token found, login unsuccessful"
-            state.session = [ brandID: 0, brandName: settings.brand, securityToken: null, expiration: 0 ] // Reset token and expiration
+            state.session = [ securityToken: null, expiration: 0 ] // Reset token and expiration
             return false
         }
     }
@@ -557,27 +541,6 @@ def refreshAll(evt){
 	refreshAll()
 }
 
-def sensorHandler(evt) {
-    log.debug "Sensor change detected: Event name  " + evt.name + " value: " + evt.value   + " deviceID: " + evt.deviceId
-
-	//If we're seeing vibration sensor values, ignore them if it's been more than 30 seconds after a command was sent.
-    // This keeps us from seeing phantom entries from overly-sensitive sensors
-	if (evt.value == "active" || evt.value == "inactive"){
-		if (state.lastCommandSent == null || state.lastCommandSent > now()-30000){
-    		return 0;
-    	}
-	}
-
-    switch (evt.deviceId) {
-    	case door1Sensor.id:
-            def firstDoor = state.validatedDoors[0]
-			if (doors instanceof String) firstDoor = doors
-        	updateDoorStatus(firstDoor, door1Sensor, door1Acceleration, door1ThreeAxis, null)
-            break
-        default:
-			syncDoorsWithSensors()
-    }
-}
 
 def doorButtonOpenHandler(evt) {
     log.debug "Door open button push detected: Event name  " + evt.name + " value: " + evt.value   + " deviceID: " + evt.deviceId + " DNI: " + evt.getDevice().deviceNetworkId
@@ -607,71 +570,18 @@ private getDoorList() {
     def deviceList = [:]
 	apiGet(getDevicesURL(), []) { response ->
 		if (response.status == 200) {
-            //log.debug "response data: " + response.data
-            //sendAlert("response data: " + response.data.Devices)
-			response.data.Devices.each { device ->
-				// 2 = garage door, 5 = gate, 7 = MyQGarage(no gateway), 9 = commercial door, 17 = Garage Door Opener WGDO
-				if (device.MyQDeviceTypeId == 2||device.MyQDeviceTypeId == 5||device.MyQDeviceTypeId == 7||device.MyQDeviceTypeId == 17||device.MyQDeviceTypeId == 9) {
-					log.debug "Found door: " + device.MyQDeviceId
-                    def dni = [ app.id, "GarageDoorOpener", device.MyQDeviceId ].join('|')
-					def description = ''
-                    def doorState = ''
-                    def updatedTime = ''
-                    device.Attributes.each {
-
-                        if (it.AttributeDisplayName=="desc")	//deviceList[dni] = it.Value
-                        {
-                        	description = it.Value
-                        }
-
-						if (it.AttributeDisplayName=="doorstate") {
-                        	doorState = it.Value
-                            updatedTime = it.UpdatedTime
-                            log.debug "api call for door: " + device.MyQDeviceId + " state is: " + doorState + " at: " + updatedTime
-						}
-					}
-
-
-                    //Sometimes MyQ has duplicates. Check and see if we've seen this door before
-                        def doorToRemove = ""
-                        state.data.each { doorDNI, door ->
-                        	if (door.name == description){
-                            	log.debug "Duplicate door detected. Checking to see if this one is newer..."
-
-                                //If this instance is newer than the duplicate, pull the older one back out of the array
-                                if (door.lastAction < updatedTime){
-                                	log.debug "Yep, this one is newer."
-                                    doorToRemove = door
-                                }
-
-                                //If this door is the older one, clear out the description so it will be ignored
-                                else{
-                                	log.debug "Nope, this one is older. Stick with what we've got."
-                                    description = ""
-                                }
-                            }
-                        }
-                        if (doorToRemove){
-                        	log.debug "Removing older duplicate."
-                            state.data.remove(door)
-                            state.doorList.remove(door)
-                        }
-
-                    //Ignore any doors with blank descriptions
-                    if (description != ''){
-                        log.debug "Storing door info: " + description + "type: " + device.MyQDeviceTypeId + " status: " + doorState +  " type: " + device.MyQDeviceTypeName
-                        deviceList[dni] = description
-                        state.doorList[dni] = description
-                        state.data[dni] = [ status: doorState, lastAction: updatedTime, name: description, type: device.MyQDeviceTypeId ]
-                    }
-                    else{
-                    	log.debug "Door " + device.MyQDeviceId + " has blank desc field. This is unusual..."
-                    }
-				}
+			response.data.items.each { device ->
+				if(device.device_family == 'garagedoor') {
+                    log.debug "found door: ${device.serial_number}"
+                    deviceList[device.serial_number] = device.name
+                    state.doorList[device.serial_number] = device.name
+                    state.data[device.serial_number] = [ status: device.state.door_state, lastAction: device.state.last_update, name: device.name ]
+                }
 			}
+
+            return deviceList
 		}
 	}
-	return deviceList
 }
 
 // HTTP GET call
@@ -720,9 +630,6 @@ private apiPut(apiPath, apiBody = [], callback = {}) {
     def myHeaders = [
         "User-Agent": "Chamberlain/10482 CFNetwork/978.0.7 Darwin/18.6.0",
         "SecurityToken": state.session.securityToken,
-//        "BrandId": "2",
-//        "ApiVersion": "4.1",
-//        "Culture": "en",
         "MyQApplicationId": getApiAppID()
     ]
 
