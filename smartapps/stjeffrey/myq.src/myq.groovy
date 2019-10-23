@@ -76,8 +76,7 @@ def prefListDevices() {
                     }
                 }
             }
-
-        }else {
+        } else {
 			def devList = getDeviceList()
 			return dynamicPage(name: "prefListDevices",  title: "Error!", install:false, uninstall:true) {
 				section(""){
@@ -85,8 +84,6 @@ def prefListDevices() {
 				}
 			}
 		}
-
-
 	} else {
 		return dynamicPage(name: "prefListDevices",  title: "Error!", install:false, uninstall:true) {
 			section(""){
@@ -95,7 +92,6 @@ def prefListDevices() {
 		}
 	}
 }
-
 
 def prefSensor1() {
     log.debug "Doors chosen: " + doors
@@ -127,7 +123,6 @@ def prefSensor1() {
             }
         }
     }
-
 
     //Determine if we have multiple doors and need to send to another page
     if (doors instanceof String){ //simulator seems to just make a single door a string. For that reason we have this weird check.
@@ -517,16 +512,18 @@ def updateDoorStatus(doorDNI, sensor, acceleration, threeAxis, child){
 def refresh(child){
     child.log("refresh called for " + child.device.deviceNetworkId)
 
-    def stateAndTime = refreshItem(child, child.device.deviceNetworkId)
-    child.log("stateAndTime is: " + stateAndTime)
-    def state = stateAndTime.split("\\|")[0]
-    def lastEvent = stateAndTime.split("\\|")[1]
-    
-    child.log(Date.parse("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", lastEvent))
-    child.log "state is: " + state
-    child.log "last event is: " + lastEvent
-    child.updateDeviceStatus(state)
-    child.updateDeviceLastActivity(new Date(lastEvent))
+    // def stateAndTime = refreshItem(child, child.device.deviceNetworkId)
+    refreshItem(child, child.device.deviceNetworkId) { stateAndTime ->
+        child.log("stateAndTime is: " + stateAndTime)
+        def state = stateAndTime.split("\\|")[0]
+        def lastEvent = stateAndTime.split("\\|")[1]
+        
+        child.log(Date.parse("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", lastEvent))
+        child.log "state is: " + state
+        child.log "last event is: " + lastEvent
+        child.updateDeviceStatus(state)
+        child.updateDeviceLastActivity(new Date(lastEvent))
+    }
 }
 
 def refreshAll(){
@@ -587,13 +584,13 @@ private getDoorList() {
 // HTTP GET call
 private apiGet(apiPath, apiQuery = [], callback = {}) {
     log.debug('making apiget call')
-    //if (!state.session.securityToken) { // Get a token
+    if (!state.session.securityToken) { // Get a token
         log.debug "need to log in before making api get call"
         if (!doLogin()) {
             log.error "Unable to complete GET, login failed"
             return
         }
-    //}
+    }
     
     log.debug "securityToken = " + state.session.securityToken
 
@@ -614,7 +611,14 @@ private apiGet(apiPath, apiQuery = [], callback = {}) {
                 log.error "Unknown GET status: ${response.status}"
             }
         }
-    }	catch (e)	{
+    } catch (groovyx.net.http.HttpResponseException httpException) {
+        if(httpException.getStatusCode() == 401) {
+            log.debug('session expired, lets try again')
+            state.session.securityToken = ""
+            apiGet(apiPath, apiQuery, callback) 
+        }
+    } 
+    catch (e)	{
         log.error "API GET Error: $e"
     }
 }
@@ -693,17 +697,20 @@ private getDeviceList() {
 	return deviceList
 }
 
-private refreshItem(device, id) {
-    device.log("getRefreshList, id: " + id)
+private refreshItem(device, id, callback = {}) {
+    device.log.debug("getRefreshList, id: " + id)
     def url = getDeviceURL(id)
     apiGet(url, []) { response ->
-        device.log('got a response');
-        device.log(response.data)
+        device.log.debug('got a response');
+        device.log.debug(response.data)
         if (response.status == 200) {
-            device.log "state is: ${response.data.state.door_state}"
-            return response.data.state.door_state + "|" + response.data.state.last_update
+            device.log.debug "state is: ${response.data.state.door_state}"
+            // return response.data.state.door_state + "|" + response.data.state.last_update
+            callback(response.data.state.door_state + "|" + response.data.state.last_update)
         } else {
-            return -1
+            device.log.debug response.status
+            callback(-1)
+            // return -1
         }
     }
 }
