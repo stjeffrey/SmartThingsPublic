@@ -515,14 +515,19 @@ def refresh(child){
     // def stateAndTime = refreshItem(child, child.device.deviceNetworkId)
     refreshItem(child, child.device.deviceNetworkId) { stateAndTime ->
         child.log("stateAndTime is: " + stateAndTime)
-        def state = stateAndTime.split("\\|")[0]
+        def status = stateAndTime.split("\\|")[0]
         def lastEvent = stateAndTime.split("\\|")[1]
         
         child.log(Date.parse("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", lastEvent))
-        child.log "state is: " + state
+        child.log "status is: " + status
         child.log "last event is: " + lastEvent
-        child.updateDeviceStatus(state)
-        child.updateDeviceLastActivity(new Date(lastEvent))
+        if(status != state.door) {
+            //state.lastStatus = status
+            child.updateDeviceStatus(status)
+            child.updateDeviceLastActivity(new Date(lastEvent))
+        } else {
+            child.log('no change')
+        }
     }
 }
 
@@ -544,7 +549,7 @@ def doorButtonOpenHandler(evt) {
     def doorDeviceDNI = evt.getDevice().deviceNetworkId
     doorDeviceDNI = doorDeviceDNI.replace(" Opener", "")
     def doorDevice = getChildDevice(doorDeviceDNI)
-    log.debug "Opening door."
+    log.debug "Opening door '${doorDeviceDNI}'"
     doorDevice.openPrep()
     sendCommand(doorDevice, "desireddoorstate", 1)
 }
@@ -601,8 +606,6 @@ private apiGet(apiPath, apiQuery = [], callback = {}) {
     ]
 
 	try {
-        //log.debug "query = " + apiQuery
-        //log.debug "headers = " + myHeaders
         httpGet([ uri: getApiURL(), path: apiPath, headers: myHeaders, query: apiQuery ]) { response ->
             //log.debug "Got GET response: Retry: ${atomicState.retryCount} of ${MAX_RETRIES}\nSTATUS: ${response.status}\nHEADERS: ${response.headers?.collect { "${it.name}: ${it.value}\n" }}\nDATA: ${response.data}"
             if (response.status == 200) {
@@ -640,7 +643,7 @@ private apiPut(apiPath, apiBody = [], callback = {}) {
     try {
         httpPut([ uri: getApiURL(), path: apiPath, headers: myHeaders, body: apiBody ]) { response ->
             log.debug "Got PUT response: Retry: ${atomicState.retryCount} of ${MAX_RETRIES}\nSTATUS: ${response.status}\nHEADERS: ${response.headers?.collect { "${it.name}: ${it.value}\n" }}\nDATA: ${response.data}"
-            if (response.status == 200) {
+            if (response.status != 204) {
                 switch (response.data.ReturnCode as Integer) {
                     case -3333: // Login again
                     	if (atomicState.retryCount <= MAX_RETRIES) {
@@ -704,13 +707,11 @@ private refreshItem(device, id, callback = {}) {
         device.log.debug('got a response');
         device.log.debug(response.data)
         if (response.status == 200) {
-            device.log.debug "state is: ${response.data.state.door_state}"
-            // return response.data.state.door_state + "|" + response.data.state.last_update
+            device.log.debug "status is: ${response.data.state.door_state}"
             callback(response.data.state.door_state + "|" + response.data.state.last_update)
         } else {
             device.log.debug response.status
             callback(-1)
-            // return -1
         }
     }
 }
@@ -725,6 +726,10 @@ private getDevicesURL() {
 
 private getDeviceURL(deviceId) {
 	return "/api/v5/Accounts/b20c88a6-7ac9-484b-b32e-706e577bea30/devices/" + deviceId
+}
+
+private getDeviceActionURL(deviceId) {
+    return "/api/v5/accounts/b20c88a6-7ac9-484b-b32e-706e577bea30/devices/${deviceId}/actions"
 }
 
 // HTTP POST call
@@ -752,29 +757,31 @@ private apiPostLogin(apiPath, apiBody = [], callback = {}) {
 }
 
 // Send command to start or stop
-def sendCommand(child, attributeName, attributeValue) {
-	state.lastCommandSent = now()
+def sendCommand(child, desiredState) {
+	child.log('here')
+    state.lastCommandSent = now()
     if (login()) {
 		//Send command
-		apiPut("/api/v4/DeviceAttribute/PutDeviceAttribute", [ MyQDeviceId: getChildDeviceID(child), AttributeName: attributeName, AttributeValue: attributeValue ])
-
-        if ((attributeName == "desireddoorstate") && (attributeValue == 0)) {		// if we are closing, check if we have an Acceleration sensor, if so, "waiting" until it moves
-            def firstDoor = state.validatedDoors[0]
-    		if (doors instanceof String) firstDoor = doors
-        	def doorDNI = child.device.deviceNetworkId
-        	switch (doorDNI) {
-        		case firstDoor:
-                	if (door1Sensor){if (door1Acceleration) child.updateDeviceStatus("waiting") else child.updateDeviceStatus("closing")}
-                	break
+        child.log('calling api to ${desiredState} door')
+		apiPut(getDeviceActionURL(child.device.deviceNetworkId), [action_type: desiredState]) { response ->
+            if ((attributeName == "desireddoorstate") && (attributeValue == 0)) {		// if we are closing, check if we have an Acceleration sensor, if so, "waiting" until it moves
+                def firstDoor = state.validatedDoors[0]
+                if (doors instanceof String) firstDoor = doors
+                def doorDNI = child.device.deviceNetworkId
+                switch (doorDNI) {
+                    case firstDoor:
+                        if (door1Sensor){if (door1Acceleration) child.updateDeviceStatus("waiting") else child.updateDeviceStatus("closing")}
+                        break
+                }
             }
+            return true
         }
-		return true
 	}
 }
 
 // Get Device ID
 def getChildDeviceID(child) {
-	return child.device.deviceNetworkId.split("\\|")[2]
+	return child.device.deviceNetworkId
 }
 
 // Get single device status
