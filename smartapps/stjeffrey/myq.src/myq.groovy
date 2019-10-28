@@ -518,15 +518,13 @@ def refresh(child){
         def status = stateAndTime.split("\\|")[0]
         def lastEvent = stateAndTime.split("\\|")[1]
         
-        child.log(Date.parse("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", lastEvent))
+        lastEvent = Date.parse("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", lastEvent)
         child.log "status is: " + status
         child.log "last event is: " + lastEvent
         if(status != state.door) {
-            //state.lastStatus = status
+            state.lastStatus = status
             child.updateDeviceStatus(status)
-            child.updateDeviceLastActivity(new Date(lastEvent))
-        } else {
-            child.log('no change')
+            child.updateDeviceLastActivity(lastEvent)
         }
     }
 }
@@ -758,13 +756,12 @@ private apiPostLogin(apiPath, apiBody = [], callback = {}) {
 
 // Send command to start or stop
 def sendCommand(child, desiredState) {
-	child.log('here')
     state.lastCommandSent = now()
     if (login()) {
 		//Send command
         child.log('calling api to ${desiredState} door')
 		apiPut(getDeviceActionURL(child.device.deviceNetworkId), [action_type: desiredState]) { response ->
-            if ((attributeName == "desireddoorstate") && (attributeValue == 0)) {		// if we are closing, check if we have an Acceleration sensor, if so, "waiting" until it moves
+            if (attributeValue == 'close') {		// if we are closing, check if we have an Acceleration sensor, if so, "waiting" until it moves
                 def firstDoor = state.validatedDoors[0]
                 if (doors instanceof String) firstDoor = doors
                 def doorDNI = child.device.deviceNetworkId

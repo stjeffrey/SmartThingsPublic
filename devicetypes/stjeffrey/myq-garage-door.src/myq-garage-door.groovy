@@ -158,7 +158,6 @@ def updateDeviceStatus(status) {
 
 def updateDeviceLastActivity(lastActivity) {
 	def finalString = lastActivity?.format('MM/d/yyyy hh:mm a',location.timeZone)
-	log.debug "final date:" + finalString    
 	sendEvent(name: "lastActivity", value: finalString, display: false , displayed: false)
 }
 
