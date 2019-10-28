@@ -75,14 +75,14 @@ def open()  {
     updateDeviceStatus("opening")
     parent.sendCommand(this, 'open') 
 	
-    runIn(30, refresh, [overwrite: true])	//Force a sync with tilt sensor after 20 seconds
+    runIn(20, refresh, [overwrite: true])	//Force a sync with tilt sensor after 20 seconds
 }
 def close() { 
 	log.debug "Garage door close command called."
     parent.notify("Garage door close command called.")
 	parent.sendCommand(this, 'close') 
 	updateDeviceStatus("closing")			// Now handled in the parent (in case we have an Acceleration sensor, we can handle "waiting" state)
-    runIn(30, refresh, [overwrite: true]) //Force a sync with tilt sensor after 30 seconds
+    runIn(20, refresh, [overwrite: true]) //Force a sync with tilt sensor after 30 seconds
 }
 
 def refresh() {	    

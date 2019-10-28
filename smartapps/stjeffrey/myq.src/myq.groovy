@@ -140,13 +140,7 @@ def prefSensor1() {
         titleText = "OPTIONAL: Select Sensors for Door 1 (" + state.data[state.validatedDoors[0]].name + ")"
     }
 
-
-    return dynamicPage(name: "prefSensor1",  title: "Optional Sensors and Push Buttons", nextPage:nextPage, install:false, uninstall:true) {
-        section(titleText){
-			paragraph "Optional: If you have sensors on this door, select them below. A sensor allows the device type to know whether the door is open or closed, which helps the device function " +
-            	"as a switch you can turn on (to open) and off (to close). Note: if you choose an acceleration sensor, you must also choose a contact sensor."
-            input(name: "door1Sensor", title: "Contact Sensor", type: "capability.contactSensor", required: false, multiple: false)
-		}
+    return dynamicPage(name: "prefSensor1",  title: "Push Buttons", nextPage:nextPage, install:false, uninstall:true) {
         section("Create separate on/off push buttons?"){
 			paragraph "Choose the option below to have separate additional On and Off push button devices created. This is recommened if you have no sensors but still want a way to open/close the " +
             "garage from SmartTiles and other interfaces like Google Home that can't function with the built-in open/close capability. See wiki for more details."
@@ -352,9 +346,6 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
             	subscribe(existingOpenButtonDev, "momentary.pushed", doorButtonOpenHandler)
                 state.installMsg = state.installMsg + doorName + ": push button device already exists. Subscription recreated. \r\n\r\n"
                 log.debug "subscribed to button: " + existingOpenButtonDev
-
-
-
             }
 
             if (!existingCloseButtonDev){
@@ -393,6 +384,7 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
         }
     }
 }
+
 /* Access Management */
 private forceLogin() {
 	//Reset token and expiry
@@ -402,12 +394,9 @@ private forceLogin() {
 	return doLogin()
 }
 
-
 private login() { 
-    
     log.debug "expiration is :" + state.session.expiration
     return (!(state.session.expiration > now())) ? doLogin() : true 
-
 }
 
 private doLogin() {
@@ -425,7 +414,6 @@ private doLogin() {
         }
     }
 }
-
 
 def syncDoorsWithSensors(child){
     def firstDoor = state.validatedDoors[0]
@@ -512,19 +500,24 @@ def updateDoorStatus(doorDNI, sensor, acceleration, threeAxis, child){
 def refresh(child){
     child.log("refresh called for " + child.device.deviceNetworkId)
 
-    // def stateAndTime = refreshItem(child, child.device.deviceNetworkId)
-    refreshItem(child, child.device.deviceNetworkId) { stateAndTime ->
-        child.log("stateAndTime is: " + stateAndTime)
-        def status = stateAndTime.split("\\|")[0]
-        def lastEvent = stateAndTime.split("\\|")[1]
-        
-        lastEvent = Date.parse("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", lastEvent)
-        child.log "status is: " + status
-        child.log "last event is: " + lastEvent
-        if(status != state.door) {
-            state.lastStatus = status
-            child.updateDeviceStatus(status)
-            child.updateDeviceLastActivity(lastEvent)
+    def url = getDeviceURL(child.device.deviceNetworkId)
+    apiGet(url, []) { response ->
+        child.log('got a response');
+        if (response.status == 200) {
+            def status = response.data.state.door_state
+            def lastEvent = response.data.state.last_update
+            
+            lastEvent = Date.parse("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", lastEvent)
+            child.log "status is: " + status
+            child.log "last event is: " + lastEvent
+            if(status != state.door) {
+                state.lastStatus = status
+                child.updateDeviceStatus(status)
+                child.updateDeviceLastActivity(lastEvent)
+            }
+        } else {
+            device.log.debug response.status
+            callback(-1)
         }
     }
 }
@@ -541,7 +534,6 @@ def refreshAll(evt){
 	refreshAll()
 }
 
-
 def doorButtonOpenHandler(evt) {
     log.debug "Door open button push detected: Event name  " + evt.name + " value: " + evt.value   + " deviceID: " + evt.deviceId + " DNI: " + evt.getDevice().deviceNetworkId
     def doorDeviceDNI = evt.getDevice().deviceNetworkId
@@ -549,7 +541,7 @@ def doorButtonOpenHandler(evt) {
     def doorDevice = getChildDevice(doorDeviceDNI)
     log.debug "Opening door '${doorDeviceDNI}'"
     doorDevice.openPrep()
-    sendCommand(doorDevice, "desireddoorstate", 1)
+    sendCommand(doorDevice, "open")
 }
 
 def doorButtonCloseHandler(evt) {
@@ -559,9 +551,8 @@ def doorButtonCloseHandler(evt) {
 	def doorDevice = getChildDevice(doorDeviceDNI)
     log.debug "Closing door."
     doorDevice.closePrep()
-    sendCommand(doorDevice, "desireddoorstate", 0)
+    sendCommand(doorDevice, "close")
 }
-
 
 // Listing all the garage doors you have in MyQ
 private getDoorList() {
@@ -641,7 +632,9 @@ private apiPut(apiPath, apiBody = [], callback = {}) {
     try {
         httpPut([ uri: getApiURL(), path: apiPath, headers: myHeaders, body: apiBody ]) { response ->
             log.debug "Got PUT response: Retry: ${atomicState.retryCount} of ${MAX_RETRIES}\nSTATUS: ${response.status}\nHEADERS: ${response.headers?.collect { "${it.name}: ${it.value}\n" }}\nDATA: ${response.data}"
-            if (response.status != 204) {
+            if (response.status == 204) {
+                callback(response)
+                /*
                 switch (response.data.ReturnCode as Integer) {
                     case -3333: // Login again
                     	if (atomicState.retryCount <= MAX_RETRIES) {
@@ -654,7 +647,7 @@ private apiPut(apiPath, apiBody = [], callback = {}) {
                         }
                         break
 
-                    case 0: // Process response
+                    case 204: // Process response
                     	atomicState.retryCount = 0 // Reset it
                     	callback(response)
                         break
@@ -662,6 +655,7 @@ private apiPut(apiPath, apiBody = [], callback = {}) {
                     default:
                     	log.error "Unknown PUT return code ${response.data.ReturnCode}, error ${response.data.ErrorMessage}"
                 }
+                */
             } else {
                 log.error "Unknown PUT status: ${response.status}"
             }
@@ -759,7 +753,7 @@ def sendCommand(child, desiredState) {
     state.lastCommandSent = now()
     if (login()) {
 		//Send command
-        child.log('calling api to ${desiredState} door')
+        child.log("calling api to ${desiredState} door")
 		apiPut(getDeviceActionURL(child.device.deviceNetworkId), [action_type: desiredState]) { response ->
             if (attributeValue == 'close') {		// if we are closing, check if we have an Acceleration sensor, if so, "waiting" until it moves
                 def firstDoor = state.validatedDoors[0]
@@ -771,6 +765,7 @@ def sendCommand(child, desiredState) {
                         break
                 }
             }
+
             return true
         }
 	}
