@@ -23,6 +23,9 @@ preferences {
     page(name: "prefUninstall", title: "MyQ")
 }
 
+def getUserAgent() {
+	return 'myQ/14041 CFNetwork/1107.1 Darwin/19.0.0'
+}
 /* Preferences */
 def preferences_Login() {
     return dynamicPage(name: "preferences_Login", title: "Connect to MyQ", nextPage:"prefListDevices", uninstall:false, install: false, submitOnChange: true) {
@@ -506,12 +509,12 @@ def refresh(child){
         if (response.status == 200) {
             def status = response.data.state.door_state
             def lastEvent = response.data.state.last_update
-            
+            child.log "lastEvent: ${lastEvent}"
             lastEvent = Date.parse("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", lastEvent)
             child.log "status is: " + status
             child.log "last event is: " + lastEvent
             if(status != state.door) {
-                state.lastStatus = status
+                state.door = status
                 child.updateDeviceStatus(status)
                 child.updateDeviceLastActivity(lastEvent)
             }
@@ -541,7 +544,8 @@ def doorButtonOpenHandler(evt) {
     def doorDevice = getChildDevice(doorDeviceDNI)
     log.debug "Opening door '${doorDeviceDNI}'"
     doorDevice.openPrep()
-    sendCommand(doorDevice, "open")
+    //sendCommand(doorDevice, "open")
+    doorDevice.open()
 }
 
 def doorButtonCloseHandler(evt) {
@@ -551,7 +555,8 @@ def doorButtonCloseHandler(evt) {
 	def doorDevice = getChildDevice(doorDeviceDNI)
     log.debug "Closing door."
     doorDevice.closePrep()
-    sendCommand(doorDevice, "close")
+    // sendCommand(doorDevice, "close")
+    doorDevice.close()
 }
 
 // Listing all the garage doors you have in MyQ
@@ -589,7 +594,7 @@ private apiGet(apiPath, apiQuery = [], callback = {}) {
     log.debug "securityToken = " + state.session.securityToken
 
     def myHeaders = [
-        "User-Agent": "Chamberlain/10482 CFNetwork/978.0.7 Darwin/18.6.0",
+        "User-Agent": getUserAgent(),
         "SecurityToken": state.session.securityToken,
         "MyQApplicationId": getApiAppID()
     ]
@@ -624,7 +629,7 @@ private apiPut(apiPath, apiBody = [], callback = {}) {
         }
     }
     def myHeaders = [
-        "User-Agent": "Chamberlain/10482 CFNetwork/978.0.7 Darwin/18.6.0",
+        "User-Agent": getUserAgent(),
         "SecurityToken": state.session.securityToken,
         "MyQApplicationId": getApiAppID()
     ]
@@ -727,7 +732,7 @@ private getDeviceActionURL(deviceId) {
 // HTTP POST call
 private apiPostLogin(apiPath, apiBody = [], callback = {}) {
     def myHeaders = [
-        "User-Agent": "Chamberlain/10482 CFNetwork/978.0.7 Darwin/18.6.0",
+        "User-Agent": getUserAgent(),
         "MyQApplicationId": getApiAppID()
     ]
 
