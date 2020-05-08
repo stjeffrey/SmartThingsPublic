@@ -594,7 +594,7 @@ private apiGet(apiPath, apiQuery = [], callback = {}) {
     log.debug "securityToken = " + state.session.securityToken
 
     def myHeaders = [
-        "User-Agent": getUserAgent(),
+//        "User-Agent": getUserAgent(),
         "SecurityToken": state.session.securityToken,
         "MyQApplicationId": getApiAppID()
     ]
@@ -629,7 +629,7 @@ private apiPut(apiPath, apiBody = [], callback = {}) {
         }
     }
     def myHeaders = [
-        "User-Agent": getUserAgent(),
+//        "User-Agent": getUserAgent(),
         "SecurityToken": state.session.securityToken,
         "MyQApplicationId": getApiAppID()
     ]
@@ -718,21 +718,21 @@ private getApiURL() {
 }
 
 private getDevicesURL() {
-	return "/api/v5/Accounts/b20c88a6-7ac9-484b-b32e-706e577bea30/Devices"
+	return "/api/v5.1/Accounts/b20c88a6-7ac9-484b-b32e-706e577bea30/Devices"
 }
 
 private getDeviceURL(deviceId) {
-	return "/api/v5/Accounts/b20c88a6-7ac9-484b-b32e-706e577bea30/devices/" + deviceId
+	return "/api/v5.1/Accounts/b20c88a6-7ac9-484b-b32e-706e577bea30/Devices/" + deviceId
 }
 
 private getDeviceActionURL(deviceId) {
-    return "/api/v5/accounts/b20c88a6-7ac9-484b-b32e-706e577bea30/devices/${deviceId}/actions"
+    return "/api/v5.1/accounts/b20c88a6-7ac9-484b-b32e-706e577bea30/Devices/${deviceId}/actions"
 }
 
 // HTTP POST call
 private apiPostLogin(apiPath, apiBody = [], callback = {}) {
     def myHeaders = [
-        "User-Agent": getUserAgent(),
+//        "User-Agent": getUserAgent(),
         "MyQApplicationId": getApiAppID()
     ]
 
